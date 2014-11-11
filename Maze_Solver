@@ -1,0 +1,140 @@
+import java.awt.Point;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.Stack;
+
+public class Challenge {
+	private URLConnection url;
+	private String redirectedURL; // to get currentInput
+	private ArrayList<Point> visitedList = new ArrayList<Point>();
+	private ArrayList<Point> path = new ArrayList<Point>(); //point path
+	private String output = ""; //letter path
+	private String mazeId;
+	private Point prevPoint, currentPoint;
+	private String currentInput;
+	private Stack<Point> stack;
+	public Challenge(){
+		stack = new Stack<Point>();
+		traverseDFS(getStartInput());
+		System.out.println(mazeId + " --> " + output);
+		System.out.println(check(mazeId, output));
+	}
+	//example input ==> {"end": false, "letter": "j", "adjacent": [{"x": 1, "y": 0}]}
+	private String getStartInput(){
+		currentPoint = new Point(0,0);
+		try{
+			url= new URL("https://challenge.flipboard.com/start").openConnection();
+			BufferedReader in = new BufferedReader(new InputStreamReader(url.getInputStream()));
+			redirectedURL = url.getURL().toString();
+			mazeId = redirectedURL.substring(redirectedURL.indexOf("=")+1, redirectedURL.indexOf("&x"));
+			String currentInput = in.readLine();
+		    in.close();
+		    return currentInput;
+		} catch(Exception e){}
+		return null;
+	}
+	
+	private String gotoNextInput(Point next) {
+		redirectedURL = String.format("https://challenge.flipboard.com/step?s=%s&x=%d&y=%d",mazeId,next.x, next.y);
+		try{
+			URLConnection conn = new URL(redirectedURL).openConnection();
+			BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+			String inputLine = in.readLine();
+		    in.close(); //need to close first
+		    return inputLine;
+		} catch(Exception e){}
+		return null;
+	}
+	//depth first search + backtracking
+	private void traverseDFS(String startInput){
+		stack.push(currentPoint);
+		while (!stack.isEmpty()){
+			prevPoint = currentPoint;
+			currentPoint = stack.pop();
+			currentInput = gotoNextInput(currentPoint);
+			//if prev point is not next to curr, then add backtracking to output
+			if (prevPoint!=currentPoint && !(Math.abs(prevPoint.getX()-currentPoint.getX())==1 
+					&& prevPoint.getY()==currentPoint.getY()) && !(prevPoint.getX()==currentPoint.getX() 
+					&& Math.abs(prevPoint.getY()-currentPoint.getY())==1 )){
+				int ind = path.indexOf(prevPoint);
+				Point backtrackPoint = path.get(ind);
+				String backtrackInput = gotoNextInput(backtrackPoint);
+				while (!isAnAdjPoint(currentPoint, backtrackInput)){ //while backtrack currentPoint is not an adjacency of currentPoint
+					path.remove(ind); //update actual location, then add to output
+					ind--;
+					backtrackPoint = path.get(ind);
+					backtrackInput = gotoNextInput(backtrackPoint);
+					addToOutput(backtrackInput);
+				}
+			}
+			addToOutput(currentInput);
+			if (!visitedList.contains(currentPoint)){
+				if(isEnd(currentInput))
+					return;
+				visitedList.add(currentPoint);
+				path.add(currentPoint);
+				Point[] adj = getAdjacent(currentInput);
+				for (Point p : adj){
+					if (!visitedList.contains(p))// if unvisited
+						stack.push(p);
+				}
+			}
+		}
+	}
+	
+	private void addToOutput(String input){
+		String[] list = input.split("letter\":");
+		String letter = list[1].substring(2, 3);
+		output += letter; // add to list
+	}
+	
+	private Point[] getAdjacent(String input){
+		String[] list = input.split("adjacent\":");
+		String a = list[1].substring(list[1].indexOf("[")+1, list[1].indexOf("]"));
+		String[] adjList = a.split(", \\{"); //list of adj points
+		Point[] pointArray = new Point[adjList.length];
+		for (int i=0; i < adjList.length; i++){
+			String point = adjList[i]; // put each point into point[]
+			Integer x = Integer.valueOf(point.substring(point.indexOf("x\":") + 4, point.indexOf(","))) ;
+			Integer y = Integer.valueOf(point.substring(point.indexOf("y\":") + 4, point.lastIndexOf("}"))) ;
+			pointArray[i] = new Point(x,y);
+		}
+		return pointArray;
+	}
+	
+	private boolean isAnAdjPoint(Point point, String input){ // is point adjacent to input's point??
+		Point[] list = getAdjacent(input);
+		for (Point p:list){
+			if (p.getX() == point.getX() && p.getY()==point.getY())
+				return true;
+		}
+		return false;
+	}
+	
+	private boolean isEnd(String input){
+		String list = input.split("end\":")[1];
+		if (list.substring(1,list.indexOf(",")).equals("false"))
+			return false;
+		return true;
+	}
+	
+	private boolean check(String s, String answer){
+		String guessURL = String.format("https://challenge.flipboard.com/check?s=%s&guess=%s", s, answer);
+		try{
+			url= new URL(guessURL).openConnection();
+			BufferedReader in = new BufferedReader(new InputStreamReader(url.getInputStream()));
+		    String[] list = in.readLine().split(": ");
+		    in.close();
+		    if(list[1].substring(0, list[1].length()-1).equals("false"))
+		    	return false;
+		} catch(Exception e){}
+		return true;
+	}
+	
+	public static void main(String[] args){
+		Challenge chal = new Challenge();
+	}
+}
